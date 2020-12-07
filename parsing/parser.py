@@ -54,8 +54,8 @@ def outputToFile(filename, bank):
     trackIds = bank.getTracks()
     for tid in trackIds:
         parsedData.write(f'{tid}:\n')
-        sectionIds = bank.getSectionsForTrack(tid)
         trackData = bank.getTrackData(tid)
+        sectionIds = list(trackData.keys())
         for i in range(len(sectionIds)):
             parsedData.write(f'  {sectionIds[i]}:\n')
             parsedData.write(f'    {trackData[i]}\n')

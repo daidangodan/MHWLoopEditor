@@ -1,7 +1,10 @@
-from tkinter import *
-from tkinter import ttk, filedialog
+from parsing.fields import *
 from parsing.parser import *
 from parsing.writer import *
+
+from tkinter import *
+from tkinter import ttk, filedialog
+
 import re
 
 class Gui:
@@ -14,18 +17,24 @@ class Gui:
     def parseWems(self):
         wems = {}
         trackNameToId = {}
-        with open('wems.csv', 'r') as data:
+        mainTracks = []
+        with open('resources/wems.csv', 'r') as data:
             for line in data:
                 splits = line.split(',')
-                trackId = splits[1]
+                trackId = int(splits[1])
                 trackName = splits[4]
                 trackGroup = splits[6]
+                isMain = int(splits[7])
                 if wems.get(trackGroup) is None:
                     wems[trackGroup] = []
                 wems[trackGroup].append(trackName)
                 trackNameToId[trackName] = trackId
+                if isMain == 1:
+                    mainTracks.append(trackId)
+
         self.state['wems'] = wems
         self.state['idmap'] = trackNameToId
+        self.state['maintracks'] = mainTracks
 
     def load(self):
         self.root = Tk()
@@ -115,11 +124,61 @@ class Gui:
         self.clearFrame(self.details)
         value = event.widget.get(selection[0])
         self.state['track'] = value
-        trackId = int(self.state['idmap'][value])
+        trackId = self.state['idmap'][value]
         trackDatas = self.bank.getTrackData(trackId)
-        for idx, td in enumerate(trackDatas):
-            self.loadTrackData(td, trackId, idx)
+        isMain = trackId in self.state['maintracks']
+        for sectionId in trackDatas:
+            self.loadTrackData(trackDatas[sectionId], trackId, sectionId, isMain)
         self.details.pack()
+
+    def loadTrackData(self, trackData, trackId, sectionId, isMain):
+        trackPlaylist = trackData['playlist']
+        trackDurations = trackData['durations']
+        trackMarkers = trackData['markers']
+        for idx, bundle in enumerate(trackPlaylist):
+            subFrame = ttk.Frame(self.details)
+            subFrame.pack(side=TOP, fill=BOTH, expand=True)
+            startNegOffset = bundle[Fields.PLAY_AT][0]
+            startNegVal = bundle[Fields.PLAY_AT][1]
+            startNegName = f'{trackId}-{sectionId}-{idx}-{Fields.PLAY_AT}'
+            startPosOffset = bundle[Fields.BEGIN_OFFSET][0]
+            startPosVal = bundle[Fields.BEGIN_OFFSET][1]
+            startPosName = f'{trackId}-{sectionId}-{idx}-{Fields.BEGIN_OFFSET}'
+            remainOffset = bundle[Fields.REMAINING][0]
+            remainVal = bundle[Fields.REMAINING][1]
+            remainName = f'{trackId}-{sectionId}-{idx}-{Fields.REMAINING}'
+            lengthOffset = bundle[Fields.TOTAL_LENGTH][0]
+            lengthVal = bundle[Fields.TOTAL_LENGTH][1]
+            lengthName = f'{trackId}-{sectionId}-{idx}-{Fields.TOTAL_LENGTH}'
+
+            ttk.Label(subFrame, text='Start (-):').pack(side=LEFT)
+            self.createEntry(subFrame, startNegName, startNegVal, [startNegOffset])
+            ttk.Label(subFrame, text='Start (+):').pack(side=LEFT)
+            self.createEntry(subFrame, startPosName, startPosVal, [startPosOffset])
+            ttk.Label(subFrame, text='Remain:').pack(side=LEFT)
+            self.createEntry(subFrame, remainName, remainVal, [remainOffset])
+            ttk.Label(subFrame, text='Track Length:').pack(side=LEFT)
+            self.createEntry(subFrame, lengthName, lengthVal, [lengthOffset])
+            ttk.Separator(self.details).pack(side=TOP, fill=X, pady=1)
+        ## only add the track duration part if this is a main track ##
+        if isMain:
+            subFrame = ttk.Frame(self.details)
+            subFrame.pack(side=TOP, fill=BOTH, expand=True)
+            durationOffsets = [td[0] for td in trackDurations]
+            durationVal = trackDurations[0][1]
+            durationName = f'{trackId}-{sectionId}-{Fields.SECTION_LENGTH}'
+            ttk.Label(subFrame, text='Section Length:').pack(side=LEFT)
+            self.createEntry(subFrame, durationName, durationVal, durationOffsets)
+            ttk.Separator(self.details).pack(side=TOP, fill=X, pady=2)
+        return
+
+    def createEntry(self, frame, name, value, offsets):
+        var = self.state['changes'].get(name)
+        if var is None:
+            var = DoubleVar(value=value)
+        entry = ttk.Entry(frame, textvariable=var, width=30, name=name)
+        entry.pack(side=LEFT)
+        self.state['fields'].append((entry, var, var.get(), offsets))
 
     def handleSave(self, event):
         for entry, var, original, offsets in self.state['fields']:
@@ -141,57 +200,6 @@ class Gui:
             for offset in offsets:
                 writer.writeDouble(newValue, int(offset, 16))
         newFile.close
-            
-
-    def loadTrackData(self, trackData, trackId, sectionIdx):
-        trackLoops = trackData['loops']
-        trackDurations = trackData['durations']
-        trackMarkers = trackData['markers']
-        # print(trackLoops)
-        # print(trackDurations)
-        # print(trackMarkers)
-        for idx, bundle in enumerate(trackLoops):
-            subFrame = ttk.Frame(self.details)
-            subFrame.pack(side=TOP, fill=BOTH, expand=True)
-            startNegOffset = bundle['startNegative'][0]
-            startNegVal = bundle['startNegative'][1]
-            startNegName = f'{trackId}-{sectionIdx}-{idx}-startNegative'
-            startPosOffset = bundle['startPositive'][0]
-            startPosVal = bundle['startPositive'][1]
-            startPosName = f'{trackId}-{sectionIdx}-{idx}-startPositive'
-            remainOffset = bundle['remaining'][0]
-            remainVal = bundle['remaining'][1]
-            remainName = f'{trackId}-{sectionIdx}-{idx}-remaining'
-            lengthOffset = bundle['length'][0]
-            lengthVal = bundle['length'][1]
-            lengthName = f'{trackId}-{sectionIdx}-{idx}-length'
-
-            ttk.Label(subFrame, text='Start (-):').pack(side=LEFT)
-            self.createEntry(subFrame, startNegName, startNegVal, [startNegOffset])
-            ttk.Label(subFrame, text='Start (+):').pack(side=LEFT)
-            self.createEntry(subFrame, startPosName, startPosVal, [startPosOffset])
-            ttk.Label(subFrame, text='Remain:').pack(side=LEFT)
-            self.createEntry(subFrame, remainName, remainVal, [remainOffset])
-            ttk.Label(subFrame, text='Track Length:').pack(side=LEFT)
-            self.createEntry(subFrame, lengthName, lengthVal, [lengthOffset])
-            ttk.Separator(self.details).pack(side=TOP, fill=X, pady=1)
-        subFrame = ttk.Frame(self.details)
-        subFrame.pack(side=TOP, fill=BOTH, expand=True)
-        durationOffsets = [td[0] for td in trackDurations]
-        durationVal = trackDurations[0][1]
-        durationName = f'{trackId}-{sectionIdx}-duration'
-        ttk.Label(subFrame, text='Section Length:').pack(side=LEFT)
-        self.createEntry(subFrame, durationName, durationVal, durationOffsets)
-        ttk.Separator(self.details).pack(side=TOP, fill=X, pady=2)
-        return
-
-    def createEntry(self, frame, name, value, offsets):
-        var = self.state['changes'].get(name)
-        if var is None:
-            var = DoubleVar(value=value)
-        entry = ttk.Entry(frame, textvariable=var, width=30, name=name)
-        entry.pack(side=LEFT)
-        self.state['fields'].append((entry, var, var.get(), offsets))
 
     def clearFrame(self, frame):
         for widget in frame.winfo_children():

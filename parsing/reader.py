@@ -1,5 +1,6 @@
+from .fields import *
+
 import struct
-import fields
 
 class Reader:
 
@@ -70,7 +71,7 @@ class Reader:
         ## Update trackId to sectionId map and record track data to bank ##
         for trackId in tempSectionData:
             bank.addPlaylistForTrackSection(trackId, sectionId, tempSectionData[trackId])
-            bank.updateTrackMap(key, sectionId)
+            bank.updateSectionToTrackMap(trackId, sectionId)
         self.data.seek(endOfChunk)
         return
 
