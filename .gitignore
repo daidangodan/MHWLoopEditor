@@ -1,6 +1,4 @@
 __pycache__/
 output/
-resources/test.txt
 resources/bgm_ingame_cmn.nbnk
-resources/test.nbnk
 test.py

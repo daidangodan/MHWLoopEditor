@@ -13,7 +13,7 @@ def parse(path, validate=False, print=False):
         headerSize = reader.readUInt32()
         reader.advance(headerSize)
         rootHeader = reader.readString(4)
-        if (rootHeader != 'HIRC'):
+        if rootHeader != 'HIRC':
             print('Header was not HIRC: ' + rootHeader)
             return
         hircSize = reader.readUInt32()
