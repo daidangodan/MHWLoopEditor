@@ -2,11 +2,13 @@ from parsing.fields import *
 from parsing.parser import *
 from parsing.writer import *
 from parsing.track import *
+from util import *
 
 from shutil import copyfileobj
 from tkinter import *
 from tkinter import ttk, filedialog
 
+import os
 import re
 
 class Gui:
@@ -20,7 +22,7 @@ class Gui:
         wems = {}
         trackNameToId = {}
         mainTracks = []
-        with open('resources/wems.csv', 'r') as data:
+        with open(getResourcePath(os.path.join('resources','wems.csv')), 'r') as data:
             for line in data:
                 splits = line.split(',')
                 trackId = int(splits[1])
@@ -43,11 +45,11 @@ class Gui:
         self.root = Tk()
         self.root.geometry('1200x720')
 
-        #self.root.tk.call('lappend', 'auto_path', 'themes')
-        #self.root.tk.call('package', 'require', 'yaru')
-        #self.root.tk.call('source', 'themes/yaru/yaru.tcl')
-        #self.style = ttk.Style()
-        #self.style.theme_use('yaru')
+        # self.root.tk.call('lappend', 'auto_path', 'resources/themes')
+        # #self.root.tk.call('package', 'require', 'yaru')
+        # self.root.tk.call('source', 'resources/themes/yaru/yaru.tcl')
+        # self.style = ttk.Style()
+        # self.style.theme_use('yaru')
 
         headerFrame = ttk.Frame(self.root, height=10)
         headerFrame.pack(side=TOP, fill=X, expand=False)
@@ -114,6 +116,7 @@ class Gui:
             return
         ## clear existing state ##
         self.clearState()
+        ## load the bank ##
         self.path = path
         self.bank = bank
         print(f'Bank loaded with {len(bank.getTracks())} tracks')
@@ -184,16 +187,6 @@ class Gui:
             self.createClipEntries(clip)
             track.addClip(clip)
 
-            # ttk.Label(subFrame, text='Start (-):').pack(side=LEFT)
-            # self.createEntry(subFrame, startNegName, startNegVal, [startNegOffset])
-            # ttk.Label(subFrame, text='Start (+):').pack(side=LEFT)
-            # self.createEntry(subFrame, startPosName, startPosVal, [startPosOffset])
-            # ttk.Label(subFrame, text='Remain:').pack(side=LEFT)
-            # self.createEntry(subFrame, remainName, remainVal, [remainOffset])
-            # ttk.Label(subFrame, text='Track Length:').pack(side=LEFT)
-            # self.createEntry(subFrame, lengthName, lengthVal, [lengthOffset])
-            # ttk.Separator(self.details).pack(side=TOP, fill=X, pady=1)
-
         durationOffsets = [td[0] for td in trackDurations]
         durationVal = trackDurations[0][1]
 
@@ -201,8 +194,6 @@ class Gui:
         track.addDurationOffsets(durationOffsets)
         self.createTrackEntries(track)
 
-        # ttk.Label(subFrame, text='Section Length:').pack(side=LEFT)
-        # self.createEntry(subFrame, durationName, durationVal, durationOffsets)
         self.state['sections'][sectionId] = track
         return
 
@@ -224,9 +215,6 @@ class Gui:
         ttk.Label(frame, text='End:').pack(side=LEFT)
         ttk.Entry(frame, textvariable=endVar, width=20).pack(side=LEFT)
 
-        # self.state['fields'][startName] = (startVar, startVar.get(), clip)
-        # self.state['fields'][endName] = (endVar, endVar.get(), clip)
-
     def createTrackEntries(self, track, durationVar=None, lengthVar=None):
         if durationVar is None or lengthVar is None:
             durationVar = DoubleVar(value=track.duration)
@@ -239,9 +227,6 @@ class Gui:
         ttk.Label(frame, text='Track Length:').pack(side=LEFT)
         ttk.Entry(frame, textvariable=lengthVar, width=20).pack(side=LEFT)
         ttk.Separator(self.details).pack(side=TOP, fill=X, pady=2)
-        
-        # self.state['fields'][durationName] = (durationVar, durationVar.get(), track)
-        # self.state['fields'][lengthName] = (lengthVar, lengthVar.get(), track)
 
     ## Iterate over all currently drawn track fields and store any changes ##
     def checkForChanges(self):
@@ -281,28 +266,9 @@ class Gui:
                     copyfileobj(oldfile, newfile)
                     writer = Writer(newfile)
                     for section, track in self.state['changes'].items():
-                        #trackId,sectionId = tuple(section.split('-'))
                         track.writeToFile(writer)
                 except IOError:
                     print("failed to write new file")
-
-    # def handleSave(self, event):
-    #     for entry, var, original, offsets in self.state['fields']:
-    #         curVal = float(entry.get())
-    #         if curVal != original:
-    #             self.state['changes'][entry.winfo_name()] = (curVal, offsets)
-    #     newpath = filedialog.asksaveasfilename(defaultextension=".nbnk")
-    #     print(newpath)
-    #     if not newpath:
-    #         return
-    #     copyfile(self.path, newpath)
-    #     newFile = open(newpath, 'wb+')
-    #     writer = Writer(newFile)
-    #     for key in self.state['changes']:
-    #         newValue, offsets = self.state['changes'][key]
-    #         for offset in offsets:
-    #             writer.writeDouble(newValue, int(offset, 16))
-    #     newFile.close
 
     def clearState(self):
         self.state['changes'].clear()

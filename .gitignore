@@ -1,4 +1,7 @@
 __pycache__/
+build/
+dist/
 output/
 resources/bgm_ingame_cmn.nbnk
+main.spec
 test.py
