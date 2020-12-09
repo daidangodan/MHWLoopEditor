@@ -1,50 +1,69 @@
 class Track(object):
 
-	def __init__(self, trackId, sectionId):
-		self.playlist = []
-		self.durationOffsets = []
+	def __init__(self, trackId):
+		self.sections = []
 		self.lengthOffsets = []
 		self.trackId = trackId
-		self.sectionId = sectionId
 
-		self.original = {'duration':None, 'length':None}
-		self.changed = False
-
-	def setDuration(self, duration):
-		if self.original['duration'] is None:
-			self.original['duration'] = duration
-		else:
-			self.changed = True
-		self.duration = duration
+		self.original = {'length':None}
 
 	def setLength(self, length):
 		if self.original['length'] is None:
 			self.original['length'] = length
-		else:
-			self.changed = True
 		self.length = length
-
-	def getCurDuration(self):
-		return self.durVar.get()
 
 	def getCurLength(self):
 		return self.lengthVar.get()
 
-	def setVars(self, durVar, lengthVar):
-		self.durVar = durVar
+	def setVars(self, lengthVar):
 		self.lengthVar = lengthVar
 
 	def applyChanges(self):
-		self.duration = self.getCurDuration()
 		self.length = self.getCurLength()
+		for section in self.sections:
+			section.applyChanges()
+
+	def writeToFile(self, writer):
+		for lOff in self.lengthOffsets:
+			writer.writeDouble(self.length, lOff)
+		## have each section write itself to the file ##
+		for section in self.sections:
+			section.writeToFile(writer)
+
+	def addSection(self, section):
+		self.sections.append(section)
+
+	def addLengthOffset(self, offset):
+		self.lengthOffsets.append(offset)
+
+class Section(object):
+
+	def __init__(self, sectionId):
+		self.playlist = []
+		self.durationOffsets = []
+		self.sectionId = sectionId
+
+		self.original = {'duration':None}
+
+	def setDuration(self, duration):
+		if self.original['duration'] is None:
+			self.original['duration'] = duration
+		self.duration = duration
+
+	def getCurDuration(self):
+		return self.durVar.get()
+
+	def setVars(self, durVar):
+		self.durVar = durVar
+
+	def applyChanges(self):
+		self.duration = self.getCurDuration()
 		for clip in self.playlist:
-			clip.applyChanges(self.length)
+			clip.applyChanges()
 
 	def writeToFile(self, writer):
 		for dOff in self.durationOffsets:
 			writer.writeDouble(self.duration, dOff)
-		for lOff in self.lengthOffsets:
-			writer.writeDouble(self.length, lOff)
 		## have each clip write itself to the file ##
 		for clip in self.playlist:
 			clip.writeToFile(writer)
@@ -55,19 +74,15 @@ class Track(object):
 	def addDurationOffsets(self, offsets):
 		self.durationOffsets += offsets
 
-	def addLengthOffset(self, offset):
-		self.lengthOffsets.append(offset)
-
-
 class Clip(object):
 
-	def __init__(self, play, begin, remain, length):
+	def __init__(self, play, begin, remain, track):
 		self.play = play
 		self.begin = begin
 		self.remain = remain
-		self.length = length
+		self.track = track
 
-		self.original = {'play': play, 'begin': begin, 'remain': remain, 'length': length}
+		self.original = {'play': play, 'begin': begin, 'remain': remain}
 
 		self.playOffsets = []
 		self.beginOffsets = []
@@ -77,7 +92,7 @@ class Clip(object):
 		return abs(self.play)
 
 	def getEnd(self):
-		return self.length + self.remain
+		return self.track.length + self.remain
 
 	def getSectionLength(self):
 		return self.getEnd() - self.getStart()
@@ -92,16 +107,15 @@ class Clip(object):
 		self.start = startVar
 		self.end = endVar
 
-	def applyChanges(self, trackLength):
+	def applyChanges(self):
 		self.begin = self.getCurStart()
 		self.play = self.begin * -1
-		self.remain = self.getCurEnd() - trackLength
-		self.length = trackLength
+		self.remain = self.getCurEnd() - self.track.length
 
 	def update(self, start, end):
 		self.play = start * -1
 		self.begin = start
-		self.remain = end - self.length
+		self.remain = end - self.track.length
 		return
 
 	def writeToFile(self, writer):

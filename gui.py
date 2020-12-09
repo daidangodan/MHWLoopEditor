@@ -39,7 +39,7 @@ class Gui:
         self.state['wems'] = wems
         self.state['idmap'] = trackNameToId
         self.state['maintracks'] = mainTracks
-        self.state['sections'] = {}
+        self.state['tracks'] = {}
 
     def load(self):
         self.root = Tk()
@@ -147,106 +147,141 @@ class Gui:
         self.checkForChanges()
         self.clearDetails()
         value = event.widget.get(selection[0])
-        self.state['track'] = value
+        self.state['trackname'] = value
         trackId = self.state['idmap'][value]
-        trackDatas = self.bank.getTrackData(trackId)
+        trackData = self.bank.getTrackData(trackId)
         isMain = trackId in self.state['maintracks']
-        for sectionId in trackDatas:
-            changedTrack = self.state['changes'].get(f'{trackId}-{sectionId}')
-            if not changedTrack is None:
-                # load from changes
-                self.loadTrackDataFromChange(changedTrack, sectionId, isMain)
-            self.loadTrackData(trackDatas[sectionId], trackId, sectionId, isMain)
+
+        changedTrack = self.state['changes'].get(f'{trackId}')
+        if not changedTrack is None:
+            # load from changes
+            self.loadTrackDataFromChange(changedTrack, isMain)
+        self.loadTrackData(trackData, trackId, isMain)
+
         self.details.pack()
 
-    def loadTrackData(self, trackData, trackId, sectionId, isMain):
-        trackPlaylist = trackData['playlist']
-        trackDurations = trackData['durations']
-        trackMarkers = trackData['markers']
-        track = Track(trackId, sectionId)
-        track.setLength(trackPlaylist[0][Fields.TOTAL_LENGTH][1])
-        for idx, bundle in enumerate(trackPlaylist):
-            startNegOffset = bundle[Fields.PLAY_AT][0]
-            startNegVal = bundle[Fields.PLAY_AT][1]
+    def loadTrackDataFromChange(self, track, isMain):
+        trackFrame = self.createTrackEntries(track, track.lengthVar)
+        for section in track.sections:
+            clipFrame = self.createSectionEntries(section, section.durVar)
+            for clip in section.playlist:
+                self.createClipEntries(clip, clipFrame, clip.start, clip.end)
+        self.state['tracks'][track.trackId] = track
 
-            startPosOffset = bundle[Fields.BEGIN_OFFSET][0]
-            startPosVal = bundle[Fields.BEGIN_OFFSET][1]
+    def loadTrackData(self, trackData, trackId, isMain):
+        track = Track(trackId)
+        trackLength = None
+        trackFrame = None
+        for sectionId, sectionData in trackData.items():
+            ## finish initializing the track and frame ##
+            if trackLength is None:
+                trackLength = sectionData['playlist'][0][Fields.TOTAL_LENGTH][1]
+                track.setLength(trackLength)
+                trackFrame = self.createTrackEntries(track)
+            section = self.loadSectionData(track, sectionData, sectionId, trackFrame)
+            track.addSection(section)
+        self.state['tracks'][trackId] = track
 
-            remainOffset = bundle[Fields.REMAINING][0]
-            remainVal = bundle[Fields.REMAINING][1]
+    def loadSectionData(self, track, sectionData, sectionId, frame):
+        playlist = sectionData['playlist']
+        durations = sectionData['durations']
+        markers = sectionData['markers']
+        section = Section(sectionId)
 
-            lengthOffset = bundle[Fields.TOTAL_LENGTH][0]
-            lengthVal = bundle[Fields.TOTAL_LENGTH][1]
+        durationOffsets = [td[0] for td in durations]
+        durationVal = durations[0][1]
+        section.setDuration(durationVal)
+        section.addDurationOffsets(durationOffsets)
 
-            clip = Clip(startNegVal, startPosVal, remainVal, lengthVal)
-            clip.addPlayOffset(startNegOffset)
-            clip.addBeginOffset(startPosOffset)
-            clip.addRemainOffset(remainOffset)
-            track.addLengthOffset(lengthOffset)
+        clipFrame = self.createSectionEntries(section)
+        for clipData in playlist:
+            clip = self.loadClipData(track, clipData, clipFrame)
+            section.addClip(clip)
 
-            self.createClipEntries(clip)
-            track.addClip(clip)
+        return section
 
-        durationOffsets = [td[0] for td in trackDurations]
-        durationVal = trackDurations[0][1]
+    def loadClipData(self, track, clipData, frame):
+        startNegOffset = clipData[Fields.PLAY_AT][0]
+        startNegVal = clipData[Fields.PLAY_AT][1]
 
-        track.setDuration(durationVal)
-        track.addDurationOffsets(durationOffsets)
-        self.createTrackEntries(track)
+        startPosOffset = clipData[Fields.BEGIN_OFFSET][0]
+        startPosVal = clipData[Fields.BEGIN_OFFSET][1]
 
-        self.state['sections'][sectionId] = track
-        return
+        remainOffset = clipData[Fields.REMAINING][0]
+        remainVal = clipData[Fields.REMAINING][1]
 
-    def loadTrackDataFromChange(self, track, sectionId, isMain):
-        for clip in track.playlist:
-            self.createClipEntries(clip, clip.start, clip.end)
-        self.createTrackEntries(track, track.durVar, track.lengthVar)
-        self.state['sections'][sectionId] = track
+        lengthOffset = clipData[Fields.TOTAL_LENGTH][0]
 
-    def createClipEntries(self, clip, startVar=None, endVar=None):
+        clip = Clip(startNegVal, startPosVal, remainVal, track)
+        clip.addPlayOffset(startNegOffset)
+        clip.addBeginOffset(startPosOffset)
+        clip.addRemainOffset(remainOffset)
+        track.addLengthOffset(lengthOffset)
+
+        self.createClipEntries(clip, frame)
+        return clip
+
+    def createTrackEntries(self, track, lengthVar=None):
+        if lengthVar is None:
+            lengthVar = DoubleVar(value=track.length)
+            track.setVars(lengthVar)
+        frame = ttk.Frame(self.details)
+        frame.pack(side=TOP, fill=BOTH, expand=True)
+        ttk.Label(frame, text=self.state['trackname']).pack(side=LEFT)
+        ttk.Label(frame, text='Track Length:').pack(side=LEFT)
+        ttk.Entry(frame, textvariable=lengthVar, width=20).pack(side=LEFT)
+        ttk.Separator(self.details).pack(side=TOP, fill=X, pady=2)
+        return frame
+
+    def createSectionEntries(self, section, durationVar=None):
+        if durationVar is None:
+            durationVar = DoubleVar(value=section.duration)
+            section.setVars(durationVar)
+        frame = ttk.Frame(self.details)
+        frame.pack(side=TOP, fill=BOTH, expand=True)
+        sectionFrame = ttk.Frame(frame)
+        sectionFrame.pack(side=RIGHT, fill=BOTH, expand=True, padx=10)
+        ttk.Label(sectionFrame, text='Section Length:').pack(side=LEFT)
+        ttk.Entry(sectionFrame, textvariable=durationVar, width=20).pack(side=LEFT)
+        clipFrame = ttk.Frame(frame)
+        clipFrame.pack(side=RIGHT, fill=BOTH, expand=True)
+        ttk.Separator(self.details).pack(side=TOP, fill=X, pady=2)
+        return clipFrame
+
+    def createClipEntries(self, clip, parentFrame, startVar=None, endVar=None):
         if startVar is None or endVar is None:
             startVar = DoubleVar(value=clip.getStart())
             endVar = DoubleVar(value=clip.getEnd())
             clip.setVars(startVar, endVar)
-        frame = ttk.Frame(self.details)
-        frame.pack(side=TOP, fill=BOTH, expand=True)
+        frame = ttk.Frame(parentFrame)
+        frame.pack(side=TOP, fill=X, expand=True)
         ttk.Label(frame, text='Start:').pack(side=LEFT)
         ttk.Entry(frame, textvariable=startVar, width=20).pack(side=LEFT)
         ttk.Label(frame, text='End:').pack(side=LEFT)
         ttk.Entry(frame, textvariable=endVar, width=20).pack(side=LEFT)
 
-    def createTrackEntries(self, track, durationVar=None, lengthVar=None):
-        if durationVar is None or lengthVar is None:
-            durationVar = DoubleVar(value=track.duration)
-            lengthVar = DoubleVar(value=track.length)
-            track.setVars(durationVar, lengthVar)
-        frame = ttk.Frame(self.details)
-        frame.pack(side=TOP, fill=BOTH, expand=True)
-        ttk.Label(frame, text='Section Length:').pack(side=LEFT)
-        ttk.Entry(frame, textvariable=durationVar, width=20).pack(side=LEFT)
-        ttk.Label(frame, text='Track Length:').pack(side=LEFT)
-        ttk.Entry(frame, textvariable=lengthVar, width=20).pack(side=LEFT)
-        ttk.Separator(self.details).pack(side=TOP, fill=X, pady=2)
-
     ## Iterate over all currently drawn track fields and store any changes ##
     def checkForChanges(self):
-        for sectionId in self.state['sections']:
-            track = self.state['sections'][sectionId]
-            curDur = track.getCurDuration()
+        ## mark track as changed as soon as we find a value that has changed ##
+        ## this is also where we update the track/section/clip objects with the new var values ##
+        for trackId, track in self.state['tracks'].items():
             curLen = track.getCurLength()
-            ## mark track as changed as soon as we find a value that has changed ##
-            ## this is also where we update the track and clip objects with the new var values ##
-            if curDur != track.duration or curLen != track.length:
+            if curLen != track.length:
                 track.applyChanges()
-                self.state['changes'][f'{track.trackId}-{track.sectionId}'] = track
+                self.state['changes'][f'{trackId}'] = track
                 continue
-            else:
-                for clip in track.playlist:
+            for section in track.sections:
+                curDur = section.getCurDuration()
+                if curDur != section.duration:
+                    track.applyChanges()
+                    self.state['changes'][f'{trackId}'] = track
+                    continue
+                for clip in section.playlist:
                     curStart = clip.getCurStart()
                     curEnd = clip.getCurEnd()
                     if curStart != clip.getStart() or curEnd != clip.getEnd():
                         track.applyChanges()
-                        self.state['changes'][f'{track.trackId}-{track.sectionId}'] = track
+                        self.state['changes'][f'{trackId}'] = track
                         continue
 
     ## Write all changes to a new file ##
@@ -265,7 +300,7 @@ class Gui:
                 try:
                     copyfileobj(oldfile, newfile)
                     writer = Writer(newfile)
-                    for section, track in self.state['changes'].items():
+                    for trackId, track in self.state['changes'].items():
                         track.writeToFile(writer)
                 except IOError:
                     print("failed to write new file")
@@ -277,7 +312,7 @@ class Gui:
         self.clearDetails()
 
     def clearDetails(self):
-        self.state['sections'].clear()
+        self.state['tracks'].clear()
         for widget in self.details.winfo_children():
             widget.destroy()
         self.details.pack_forget()
